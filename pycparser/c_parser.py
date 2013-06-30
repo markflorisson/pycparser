@@ -619,6 +619,53 @@ class CParser(PLYParser):
         """
         p[0] = p[1]
 
+    def p_const_or_type(self, p):
+        """ const_or_type : constant
+                          | unified_string_literal
+                          | unified_wstring_literal
+                          | type_name
+                          | template
+        """
+        if len(p) == 4:
+            p[0] = p[2]
+        else:
+            p[0] = p[1]
+
+    def p_declaration_specifiers_list(self, p):
+        """ declaration_specifiers_list : const_or_type
+                                        | declaration_specifiers_list COMMA
+                                        | declaration_specifiers_list COMMA const_or_type
+        """
+        if len(p) == 2:
+            p[0] = [p[1]]
+        elif len(p) == 3:
+            p[0] = p[1]
+        else:
+            const_or_type = p[3]
+            if isinstance(const_or_type, dict):
+                types = const_or_type['type']
+            else:
+                types = [const_or_type]
+            p[0] = p[1] + types
+
+    def p_declaration_specifier_template(self, p):
+        """ declaration_specifiers  : template """
+        p[0] = p[1]
+
+    def p_template(self, p):
+        """ template  : type_specifier LT declaration_specifiers_list GT """
+        subtypes = []
+        for subtype in p[3]:
+            if isinstance(subtype, dict):
+                subtype, = subtype['type']
+            subtypes.append(subtype)
+        template = c_ast.Template(
+            left=p[1],
+            right=subtypes,
+            coord=p[1].coord)
+
+        p[0] = self._add_declaration_specifier(None, template, 'type')
+
     def p_type_qualifier(self, p):
         """ type_qualifier  : CONST
                             | RESTRICT
@@ -1263,12 +1310,18 @@ class CParser(PLYParser):
         else:
             p[0] = c_ast.BinaryOp(p[2], p[1], p[3], p[1].coord)
 
+    def p_cast_type(self, p):
+        """
+        cast_type : type_name
+                  | template
+        """
+
     def p_cast_expression_1(self, p):
         """ cast_expression : unary_expression """
         p[0] = p[1]
 
     def p_cast_expression_2(self, p):
-        """ cast_expression : LPAREN type_name RPAREN cast_expression """
+        """ cast_expression : LPAREN cast_type RPAREN cast_expression """
         p[0] = c_ast.Cast(p[2], p[4], self._coord(p.lineno(1)))
 
     def p_unary_expression_1(self, p):
